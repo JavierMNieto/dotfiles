@@ -24,6 +24,9 @@ if ! command -v tmux >/dev/null 2>&1; then
     sudo apt-get update -qq && sudo apt-get install -y tmux
 fi
 
+# ── tmux config ───────────────────────────────────────────────────────────────
+cp ~/dotfiles/.tmux.conf ~/.tmux.conf 2>/dev/null || true
+
 # ── Claude Code alias (skip permission prompts inside devcontainers) ──────────
 if ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" ~/.bashrc; then
     echo "alias claude='claude --dangerously-skip-permissions'" >> ~/.bashrc
