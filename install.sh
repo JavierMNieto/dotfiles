@@ -36,3 +36,10 @@ if [ -f ~/.zshrc ] && ! grep -qxF "alias claude='claude --dangerously-skip-permi
 fi
 
 echo "[dotfiles] tmux and claude alias ready."
+
+git config core.fsmonitor true
+git config core.untrackedCache true
+git config --global user.name "Javier Nieto"
+git config --global user.email "javiermnieto89@gmail.com"
+
+echo "git config set."
