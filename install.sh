@@ -3,6 +3,9 @@
 # Installs jcodemunch-mcp and jdocmunch-mcp (Python CLI tools used by Claude Code hooks).
 set -e
 
+# ── Install bun.sh ─────────────────────────────────────────────────
+curl -fsSL https://bun.sh/install | bash
+
 # ── Install uv if not present ─────────────────────────────────────────────────
 if ! command -v uv >/dev/null 2>&1; then
     echo "[dotfiles] Installing uv..."
