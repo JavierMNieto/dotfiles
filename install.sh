@@ -1,59 +1,135 @@
 #!/usr/bin/env bash
 # Personal dev container setup — runs automatically on container create/attach.
 # Installs jcodemunch-mcp and jdocmunch-mcp (Python CLI tools used by Claude Code hooks).
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+log() {
+    echo "[dotfiles] $*"
+}
+
+has_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+ensure_local_bin() {
+    mkdir -p "$HOME/.local/bin"
+    export PATH="$HOME/.local/bin:$PATH"
+}
+
+apt_install() {
+    local package="$1"
+    if has_cmd "$package"; then
+        return 0
+    fi
+
+    if ! has_cmd apt-get; then
+        log "Skipping $package install (apt-get not available)."
+        return 0
+    fi
+
+    log "Installing $package..."
+    if has_cmd sudo; then
+        sudo apt-get update -qq && sudo apt-get install -y "$package"
+    else
+        apt-get update -qq && apt-get install -y "$package"
+    fi
+}
+
+if ! has_cmd curl; then
+    log "curl is required but was not found."
+    exit 1
+fi
 
 # ── Install bun.sh ─────────────────────────────────────────────────
-curl -fsSL https://bun.sh/install | bash
+if ! has_cmd bun; then
+    log "Installing bun..."
+    curl -fsSL https://bun.sh/install | bash
+fi
 
 # ── Install uv if not present ─────────────────────────────────────────────────
-if ! command -v uv >/dev/null 2>&1; then
-    echo "[dotfiles] Installing uv..."
+if ! has_cmd uv; then
+    log "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    # Make uv available in the current shell
-    export PATH="$HOME/.local/bin:$PATH"
 fi
+ensure_local_bin
 
 # ── Install jcodemunch-mcp and jdocmunch-mcp ─────────────────────────────────
-echo "[dotfiles] Installing jcodemunch-mcp..."
-uv tool install jcodemunch-mcp --upgrade
-echo "[dotfiles] Installing jdocmunch-mcp..."
-uv tool install jdocmunch-mcp --upgrade
-echo "[dotfiles] Done. jcodemunch-mcp and jdocmunch-mcp are installed."
-
-# ── Install tmux if not present ───────────────────────────────────────────────
-if ! command -v tmux >/dev/null 2>&1; then
-    echo "[dotfiles] Installing tmux..."
-    sudo apt-get update -qq && sudo apt-get install -y tmux
+if has_cmd uv; then
+    log "Installing jcodemunch-mcp..."
+    uv tool install jcodemunch-mcp --upgrade
+    log "Installing jdocmunch-mcp..."
+    uv tool install jdocmunch-mcp --upgrade
+    log "Done. jcodemunch-mcp and jdocmunch-mcp are installed."
+else
+    log "Skipping MCP tool installation (uv not available)."
 fi
 
+# ── Install tmux if not present ───────────────────────────────────────────────
+apt_install tmux
+
 # ── Install gitmux if not present ───────────────────────────────────────────────
-if ! command -v gitmux >/dev/null 2>&1; then
-    echo "[dotfiles] Installing gitmux..."
-    VER=$(curl -fsSL https://api.github.com/repos/arl/gitmux/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+')
-    ARCH=$(dpkg --print-architecture)
-    curl -fsSL "https://github.com/arl/gitmux/releases/download/${VER}/gitmux_${VER}_linux_${ARCH}.tar.gz" | tar -xz -C /tmp
-    install -m 755 /tmp/gitmux "$HOME/.local/bin/gitmux"
+if ! has_cmd gitmux; then
+    log "Installing gitmux..."
+    ensure_local_bin
+    VER="$(curl -fsSL https://api.github.com/repos/arl/gitmux/releases/latest | awk -F '"' '/"tag_name"/ {print $4; exit}')"
+
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+        x86_64|amd64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            log "Skipping gitmux install (unsupported architecture: $ARCH)."
+            ARCH=""
+            ;;
+    esac
+
+    if [ -n "$ARCH" ] && [ -n "$VER" ]; then
+        TMP_DIR="$(mktemp -d)"
+        trap 'rm -rf "$TMP_DIR"' EXIT
+        curl -fsSL "https://github.com/arl/gitmux/releases/download/${VER}/gitmux_${VER}_linux_${ARCH}.tar.gz" | tar -xz -C "$TMP_DIR"
+        install -m 755 "$TMP_DIR/gitmux" "$HOME/.local/bin/gitmux"
+    fi
 fi
 
 # ── tmux config ───────────────────────────────────────────────────────────────
-git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
-cp ~/dotfiles/.tmux.conf ~/.tmux.conf 2>/dev/null || true
-cp ~/dotfiles/.gitmux.conf ~/.gitmux.conf 2>/dev/null || true
+mkdir -p "$HOME/.tmux/plugins"
+if [ ! -d "$HOME/.tmux/plugins/tpm/.git" ]; then
+    git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+fi
+cp "$SCRIPT_DIR/.tmux.conf" "$HOME/.tmux.conf" 2>/dev/null || true
+cp "$SCRIPT_DIR/.gitmux.conf" "$HOME/.gitmux.conf" 2>/dev/null || true
+
+# ── Git config (shared tracked defaults + local untracked identity) ───────────
+if ! git config --global --get-all include.path | grep -Fxq "$SCRIPT_DIR/.gitconfig"; then
+    git config --global --add include.path "$SCRIPT_DIR/.gitconfig"
+fi
+
+if [ ! -f "$HOME/.gitconfig.local" ]; then
+    cat > "$HOME/.gitconfig.local" <<'EOF'
+[user]
+    name = Your Name
+    email = your.email@example.com
+EOF
+    chmod 600 "$HOME/.gitconfig.local"
+    log "Created ~/.gitconfig.local template. Update it with your identity."
+fi
 
 # ── Claude Code alias (skip permission prompts inside devcontainers) ──────────
-if ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" ~/.bashrc; then
-    echo "alias claude='claude --dangerously-skip-permissions'" >> ~/.bashrc
+if [ "${DOTFILES_ENABLE_DANGEROUS_CLAUDE_ALIAS:-0}" = "1" ]; then
+    if ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" "$HOME/.bashrc"; then
+        echo "alias claude='claude --dangerously-skip-permissions'" >> "$HOME/.bashrc"
+    fi
+    if [ -f "$HOME/.zshrc" ] && ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" "$HOME/.zshrc"; then
+        echo "alias claude='claude --dangerously-skip-permissions'" >> "$HOME/.zshrc"
+    fi
+else
+    log "Dangerous Claude alias is disabled. Set DOTFILES_ENABLE_DANGEROUS_CLAUDE_ALIAS=1 to enable."
 fi
-if [ -f ~/.zshrc ] && ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" ~/.zshrc; then
-    echo "alias claude='claude --dangerously-skip-permissions'" >> ~/.zshrc
-fi
 
-echo "[dotfiles] tmux and claude alias ready."
-
-git config core.fsmonitor true
-git config core.untrackedCache true
-git config --global user.name "Javier Nieto"
-git config --global user.email "javiermnieto89@gmail.com"
-
-echo "git config set."
+log "tmux and shell setup complete."

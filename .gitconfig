@@ -1,0 +1,9 @@
+[core]
+    fsmonitor = true
+    untrackedCache = true
+
+[fetch]
+    prune = true
+
+[include]
+    path = ~/.gitconfig.local
