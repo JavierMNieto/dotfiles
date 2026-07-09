@@ -22,16 +22,6 @@ Identity/secrets stay in untracked `~/.gitconfig.local`:
 - If `~/.gitconfig.local` does not exist, a template is created.
 - Update `~/.gitconfig.local` with your own `[user]` values.
 
-## Optional dangerous Claude alias
-
-The alias below is **opt-in** and disabled by default:
-
-`alias claude='claude --dangerously-skip-permissions'`
-
-Enable it by setting:
-
-`DOTFILES_ENABLE_DANGEROUS_CLAUDE_ALIAS=1`
-
 ## Usage
 
 Configured via VS Code User Settings:

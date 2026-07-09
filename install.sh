@@ -120,16 +120,4 @@ EOF
     log "Created ~/.gitconfig.local template. Update it with your identity."
 fi
 
-# ── Claude Code alias (skip permission prompts inside devcontainers) ──────────
-if [ "${DOTFILES_ENABLE_DANGEROUS_CLAUDE_ALIAS:-0}" = "1" ]; then
-    if ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" "$HOME/.bashrc"; then
-        echo "alias claude='claude --dangerously-skip-permissions'" >> "$HOME/.bashrc"
-    fi
-    if [ -f "$HOME/.zshrc" ] && ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" "$HOME/.zshrc"; then
-        echo "alias claude='claude --dangerously-skip-permissions'" >> "$HOME/.zshrc"
-    fi
-else
-    log "Dangerous Claude alias is disabled. Set DOTFILES_ENABLE_DANGEROUS_CLAUDE_ALIAS=1 to enable."
-fi
-
 log "tmux and shell setup complete."
