@@ -24,7 +24,16 @@ echo "[dotfiles] Done. jcodemunch-mcp and jdocmunch-mcp are installed."
 # ── Install tmux if not present ───────────────────────────────────────────────
 if ! command -v tmux >/dev/null 2>&1; then
     echo "[dotfiles] Installing tmux..."
-    sudo apt-get update -qq && sudo apt-get install -y tmux gitmux
+    sudo apt-get update -qq && sudo apt-get install -y tmux
+fi
+
+# ── Install gitmux if not present ───────────────────────────────────────────────
+if ! command -v gitmux >/dev/null 2>&1; then
+    echo "[dotfiles] Installing gitmux..."
+    VER=$(curl -fsSL https://api.github.com/repos/arl/gitmux/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+')
+    ARCH=$(dpkg --print-architecture)
+    curl -fsSL "https://github.com/arl/gitmux/releases/download/${VER}/gitmux_${VER}_linux_${ARCH}.tar.gz" | tar -xz -C /tmp
+    install -m 755 /tmp/gitmux "$HOME/.local/bin/gitmux"
 fi
 
 # ── tmux config ───────────────────────────────────────────────────────────────
