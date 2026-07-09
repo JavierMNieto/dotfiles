@@ -30,6 +30,7 @@ fi
 # ── tmux config ───────────────────────────────────────────────────────────────
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 cp ~/dotfiles/.tmux.conf ~/.tmux.conf 2>/dev/null || true
+cp ~/dotfiles/.gitmux.conf ~/.gitmux.conf 2>/dev/null || true
 
 # ── Claude Code alias (skip permission prompts inside devcontainers) ──────────
 if ! grep -qxF "alias claude='claude --dangerously-skip-permissions'" ~/.bashrc; then
