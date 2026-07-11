@@ -69,6 +69,12 @@ fi
 # ── Install tmux if not present ───────────────────────────────────────────────
 apt_install tmux
 
+# ── Optional clipboard helpers for tmux select-to-copy on Linux ──────────────
+# No-op on non-apt systems (e.g., macOS).
+apt_install wl-clipboard
+apt_install xclip
+apt_install xsel
+
 # ── Install gitmux if not present ───────────────────────────────────────────────
 if ! has_cmd gitmux; then
     log "Installing gitmux..."
