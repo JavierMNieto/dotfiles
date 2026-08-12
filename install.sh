@@ -37,6 +37,66 @@ apt_install() {
     fi
 }
 
+sync_claude_settings() {
+    local enabled="${CLAUDE_SYNC_ENABLED:-1}"
+    if [ "$enabled" != "1" ]; then
+        log "Skipping Claude settings sync (CLAUDE_SYNC_ENABLED=$enabled)."
+        return 0
+    fi
+
+    local repo="${CLAUDE_SYNC_REPO:-https://github.com/JavierMNieto/.claude.git}"
+    local ref="${CLAUDE_SYNC_REF:-}"
+    local dest="${CLAUDE_SYNC_DEST:-$HOME/.claude}"
+    local cache_dir="${CLAUDE_SYNC_CACHE_DIR:-$HOME/.cache/dotfiles/claude-settings}"
+    local delete_mode="${CLAUDE_SYNC_DELETE:-0}"
+    local extra_excludes="${CLAUDE_SYNC_EXCLUDES:-}"
+
+    mkdir -p "$(dirname "$cache_dir")" "$dest"
+
+    if [ -d "$cache_dir/.git" ]; then
+        git -C "$cache_dir" remote set-url origin "$repo" >/dev/null 2>&1 || true
+        git -C "$cache_dir" fetch --prune origin >/dev/null
+    else
+        log "Cloning Claude settings from $repo..."
+        git clone --depth 1 "$repo" "$cache_dir" >/dev/null
+    fi
+
+    if [ -n "$ref" ]; then
+        git -C "$cache_dir" fetch --depth 1 origin "$ref" >/dev/null
+        git -C "$cache_dir" checkout -f --detach FETCH_HEAD >/dev/null
+    else
+        git -C "$cache_dir" checkout -f --detach refs/remotes/origin/HEAD >/dev/null 2>&1 || \
+            git -C "$cache_dir" checkout -f --detach "$(git -C "$cache_dir" rev-parse HEAD)" >/dev/null
+    fi
+
+    if has_cmd rsync; then
+        local -a sync_args=("-a" "--exclude=.git/")
+        if [ "$delete_mode" = "1" ]; then
+            sync_args+=("--delete")
+        fi
+
+        local old_ifs="$IFS"
+        IFS=','
+        read -r -a excludes <<< "$extra_excludes"
+        IFS="$old_ifs"
+        for pattern in "${excludes[@]}"; do
+            if [ -n "$pattern" ]; then
+                sync_args+=("--exclude=$pattern")
+            fi
+        done
+
+        rsync "${sync_args[@]}" "$cache_dir"/ "$dest"/
+    else
+        log "rsync not available; using cp fallback."
+        if [ "$delete_mode" = "1" ] || [ -n "$extra_excludes" ]; then
+            log "Fallback mode ignores CLAUDE_SYNC_DELETE and CLAUDE_SYNC_EXCLUDES."
+        fi
+        find "$cache_dir" -mindepth 1 -maxdepth 1 ! -name ".git" -exec cp -R {} "$dest"/ \;
+    fi
+
+    log "Claude settings synced to $dest."
+}
+
 if ! has_cmd curl; then
     log "curl is required but was not found."
     exit 1
@@ -74,6 +134,7 @@ apt_install tmux
 apt_install wl-clipboard
 apt_install xclip
 apt_install xsel
+apt_install rsync
 
 # ── Install gitmux if not present ───────────────────────────────────────────────
 if ! has_cmd gitmux; then
@@ -125,5 +186,8 @@ EOF
     chmod 600 "$HOME/.gitconfig.local"
     log "Created ~/.gitconfig.local template. Update it with your identity."
 fi
+
+# ── Claude settings sync ───────────────────────────────────────────────────────
+sync_claude_settings
 
 log "tmux and shell setup complete."

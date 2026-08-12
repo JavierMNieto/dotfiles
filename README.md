@@ -12,6 +12,7 @@ Personal dev container setup script.
 - `gitmux` (latest release, Linux `amd64`/`arm64`)
 - `~/.tmux.conf` and `~/.gitmux.conf` copied from this repository
 - TPM plugin manager (`~/.tmux/plugins/tpm`) if missing
+- Claude settings synced from `https://github.com/JavierMNieto/.claude` into `~/.claude`
 
 ## tmux clipboard behavior
 
@@ -32,6 +33,22 @@ Identity/secrets stay in untracked `~/.gitconfig.local`:
 - `install.sh` adds the repo `.gitconfig` as a global include.
 - If `~/.gitconfig.local` does not exist, a template is created.
 - Update `~/.gitconfig.local` with your own `[user]` values.
+
+## Claude sync
+
+`install.sh` syncs your Claude repo into local container settings so shared config and agents stay updated.
+
+- Source repo: `CLAUDE_SYNC_REPO` (default: `https://github.com/JavierMNieto/.claude.git`)
+- Target path: `CLAUDE_SYNC_DEST` (default: `~/.claude`)
+- Optional ref/branch/tag: `CLAUDE_SYNC_REF` (default: remote default branch)
+- Enable/disable sync: `CLAUDE_SYNC_ENABLED` (`1` by default, set to `0` to disable)
+- Optional delete mode: `CLAUDE_SYNC_DELETE` (`0` by default, set to `1` for `rsync --delete`)
+- Optional preserved paths/patterns: `CLAUDE_SYNC_EXCLUDES` (comma-separated rsync exclude patterns)
+- Optional cache location: `CLAUDE_SYNC_CACHE_DIR` (default: `~/.cache/dotfiles/claude-settings`)
+
+Notes:
+- `.git/` from the settings repo is never copied.
+- On systems without `rsync`, a `cp` fallback is used (no delete/exclude pattern support in fallback mode).
 
 ## Usage
 
