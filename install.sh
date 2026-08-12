@@ -38,18 +38,18 @@ apt_install() {
 }
 
 sync_claude_settings() {
-    local enabled="${CLAUDE_SYNC_ENABLED:-1}"
-    if [ "$enabled" != "1" ]; then
-        log "Skipping Claude settings sync (CLAUDE_SYNC_ENABLED=$enabled)."
-        return 0
-    fi
+    local sync_toggle="${CLAUDE_SYNC:-1}"
+    case "${sync_toggle,,}" in
+        0|false|no|off)
+            log "Skipping Claude settings sync (CLAUDE_SYNC=$sync_toggle)."
+            return 0
+            ;;
+    esac
 
-    local repo="${CLAUDE_SYNC_REPO:-https://github.com/JavierMNieto/.claude.git}"
+    local repo="https://github.com/JavierMNieto/.claude.git"
     local ref="${CLAUDE_SYNC_REF:-}"
-    local dest="${CLAUDE_SYNC_DEST:-$HOME/.claude}"
-    local cache_dir="${CLAUDE_SYNC_CACHE_DIR:-$HOME/.cache/dotfiles/claude-settings}"
-    local delete_mode="${CLAUDE_SYNC_DELETE:-0}"
-    local extra_excludes="${CLAUDE_SYNC_EXCLUDES:-}"
+    local dest="$HOME/.claude"
+    local cache_dir="$HOME/.cache/dotfiles/claude-settings"
 
     mkdir -p "$(dirname "$cache_dir")" "$dest"
 
@@ -70,27 +70,9 @@ sync_claude_settings() {
     fi
 
     if has_cmd rsync; then
-        local -a sync_args=("-a" "--exclude=.git/")
-        if [ "$delete_mode" = "1" ]; then
-            sync_args+=("--delete")
-        fi
-
-        local old_ifs="$IFS"
-        IFS=','
-        read -r -a excludes <<< "$extra_excludes"
-        IFS="$old_ifs"
-        for pattern in "${excludes[@]}"; do
-            if [ -n "$pattern" ]; then
-                sync_args+=("--exclude=$pattern")
-            fi
-        done
-
-        rsync "${sync_args[@]}" "$cache_dir"/ "$dest"/
+        rsync -a --exclude=.git/ "$cache_dir"/ "$dest"/
     else
         log "rsync not available; using cp fallback."
-        if [ "$delete_mode" = "1" ] || [ -n "$extra_excludes" ]; then
-            log "Fallback mode ignores CLAUDE_SYNC_DELETE and CLAUDE_SYNC_EXCLUDES."
-        fi
         find "$cache_dir" -mindepth 1 -maxdepth 1 ! -name ".git" -exec cp -R {} "$dest"/ \;
     fi
 

@@ -38,17 +38,15 @@ Identity/secrets stay in untracked `~/.gitconfig.local`:
 
 `install.sh` syncs your Claude repo into local container settings so shared config and agents stay updated.
 
-- Source repo: `CLAUDE_SYNC_REPO` (default: `https://github.com/JavierMNieto/.claude.git`)
-- Target path: `CLAUDE_SYNC_DEST` (default: `~/.claude`)
-- Optional ref/branch/tag: `CLAUDE_SYNC_REF` (default: remote default branch)
-- Enable/disable sync: `CLAUDE_SYNC_ENABLED` (`1` by default, set to `0` to disable)
-- Optional delete mode: `CLAUDE_SYNC_DELETE` (`0` by default, set to `1` for `rsync --delete`)
-- Optional preserved paths/patterns: `CLAUDE_SYNC_EXCLUDES` (comma-separated rsync exclude patterns)
-- Optional cache location: `CLAUDE_SYNC_CACHE_DIR` (default: `~/.cache/dotfiles/claude-settings`)
+- `CLAUDE_SYNC` — toggle sync on/off (`1` by default; accepts `0`, `false`, `no`, `off` to disable)
+- `CLAUDE_SYNC_REF` — optional branch/tag/commit to sync (default: repo default branch)
 
 Notes:
+- Source is fixed to `https://github.com/JavierMNieto/.claude.git`.
+- Destination is fixed to `~/.claude`.
 - `.git/` from the settings repo is never copied.
-- On systems without `rsync`, a `cp` fallback is used (no delete/exclude pattern support in fallback mode).
+- Local files in `~/.claude` are preserved by default (sync updates/overwrites matching files only).
+- On systems without `rsync`, a `cp` fallback is used.
 
 ## Usage
 
