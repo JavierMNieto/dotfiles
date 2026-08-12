@@ -37,6 +37,48 @@ apt_install() {
     fi
 }
 
+sync_claude_settings() {
+    local sync_toggle="${CLAUDE_SYNC:-1}"
+    case "${sync_toggle,,}" in
+        0|false|no|off)
+            log "Skipping Claude settings sync (CLAUDE_SYNC=$sync_toggle)."
+            return 0
+            ;;
+    esac
+
+    local repo="https://github.com/JavierMNieto/.claude.git"
+    local ref="${CLAUDE_SYNC_REF:-}"
+    local dest="$HOME/.claude"
+    local cache_dir="$HOME/.cache/dotfiles/claude-settings"
+
+    mkdir -p "$(dirname "$cache_dir")" "$dest"
+
+    if [ -d "$cache_dir/.git" ]; then
+        git -C "$cache_dir" remote set-url origin "$repo" >/dev/null 2>&1 || true
+        git -C "$cache_dir" fetch --prune origin >/dev/null
+    else
+        log "Cloning Claude settings from $repo..."
+        git clone --depth 1 "$repo" "$cache_dir" >/dev/null
+    fi
+
+    if [ -n "$ref" ]; then
+        git -C "$cache_dir" fetch --depth 1 origin "$ref" >/dev/null
+        git -C "$cache_dir" checkout -f --detach FETCH_HEAD >/dev/null
+    else
+        git -C "$cache_dir" checkout -f --detach refs/remotes/origin/HEAD >/dev/null 2>&1 || \
+            git -C "$cache_dir" checkout -f --detach "$(git -C "$cache_dir" rev-parse HEAD)" >/dev/null
+    fi
+
+    if has_cmd rsync; then
+        rsync -a --exclude=.git/ "$cache_dir"/ "$dest"/
+    else
+        log "rsync not available; using cp fallback."
+        find "$cache_dir" -mindepth 1 -maxdepth 1 ! -name ".git" -exec cp -R {} "$dest"/ \;
+    fi
+
+    log "Claude settings synced to $dest."
+}
+
 if ! has_cmd curl; then
     log "curl is required but was not found."
     exit 1
@@ -74,6 +116,7 @@ apt_install tmux
 apt_install wl-clipboard
 apt_install xclip
 apt_install xsel
+apt_install rsync
 
 # ── Install gitmux if not present ───────────────────────────────────────────────
 if ! has_cmd gitmux; then
@@ -125,5 +168,8 @@ EOF
     chmod 600 "$HOME/.gitconfig.local"
     log "Created ~/.gitconfig.local template. Update it with your identity."
 fi
+
+# ── Claude settings sync ───────────────────────────────────────────────────────
+sync_claude_settings
 
 log "tmux and shell setup complete."
