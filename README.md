@@ -31,8 +31,8 @@ This repo now ships a tracked `/home/runner/work/dotfiles/dotfiles/.gitconfig` w
 Identity/secrets stay in untracked `~/.gitconfig.local`:
 
 - `install.sh` adds the repo `.gitconfig` as a global include.
-- If `~/.gitconfig.local` does not exist, a template is created.
-- Update `~/.gitconfig.local` with your own `[user]` values.
+- If `~/.gitconfig.local` does not exist, it is created with detected defaults from `GIT_USER_NAME` / `GIT_AUTHOR_NAME` / `GITHUB_ACTOR` and matching email fallbacks.
+- If `~/.gitconfig.local` still has placeholder values (`Your Name`, `your.email@example.com`), `install.sh` updates them automatically with detected defaults.
 
 ## Claude sync
 
