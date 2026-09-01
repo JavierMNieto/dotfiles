@@ -175,8 +175,12 @@ EOF
     chmod 600 "$HOME/.gitconfig.local"
     log "Created ~/.gitconfig.local with detected identity defaults."
 elif grep -Fq "name = Your Name" "$HOME/.gitconfig.local" || grep -Fq "email = your.email@example.com" "$HOME/.gitconfig.local"; then
-    sed -i "s/^    name = Your Name$/    name = ${default_git_name//\//\\/}/" "$HOME/.gitconfig.local"
-    sed -i "s/^    email = your.email@example.com$/    email = ${default_git_email//\//\\/}/" "$HOME/.gitconfig.local"
+    if grep -Fq "name = Your Name" "$HOME/.gitconfig.local"; then
+        git config --file "$HOME/.gitconfig.local" user.name "$default_git_name"
+    fi
+    if grep -Fq "email = your.email@example.com" "$HOME/.gitconfig.local"; then
+        git config --file "$HOME/.gitconfig.local" user.email "$default_git_email"
+    fi
     log "Updated ~/.gitconfig.local placeholder identity values."
 fi
 
