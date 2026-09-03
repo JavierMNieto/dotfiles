@@ -98,7 +98,7 @@ sync_claude_settings() {
 
 apply_claude_permission_mode() {
     local detection_mode="${CLAUDE_CONTAINER_DETECTION:-auto}"
-    local permission_mode="${CLAUDE_CONTAINER_PERMISSION_MODE:-bypassPermissions}"
+    local default_mode="${CLAUDE_CONTAINER_PERMISSION_MODE:-bypassPermissions}"
     local settings_file="$HOME/.claude/settings.local.json"
     local in_container=1
 
@@ -121,25 +121,25 @@ apply_claude_permission_mode() {
     esac
 
     if [ "$in_container" -ne 0 ]; then
-        log "Skipping Claude permission-mode override (container not detected)."
+        log "Skipping Claude permissions override (container not detected)."
         return 0
     fi
 
-    if [ -z "$permission_mode" ]; then
-        log "Skipping Claude permission-mode override (CLAUDE_CONTAINER_PERMISSION_MODE is empty)."
+    if [ -z "$default_mode" ]; then
+        log "Skipping Claude permissions override (CLAUDE_CONTAINER_PERMISSION_MODE is empty)."
         return 0
     fi
 
     mkdir -p "$(dirname "$settings_file")"
 
     if has_cmd python3; then
-        python3 - "$settings_file" "$permission_mode" <<'PY'
+        python3 - "$settings_file" "$default_mode" <<'PY'
 import json
 import pathlib
 import sys
 
 settings_file = pathlib.Path(sys.argv[1])
-permission_mode = sys.argv[2]
+default_mode = sys.argv[2]
 payload = {}
 
 if settings_file.exists():
@@ -150,18 +150,27 @@ if settings_file.exists():
     except Exception:
         pass
 
-payload["permissionMode"] = permission_mode
+permissions = payload.get("permissions")
+if not isinstance(permissions, dict):
+    permissions = {}
+
+permissions["defaultMode"] = default_mode
+permissions["bypassAllToolUsePermissions"] = True
+payload["permissions"] = permissions
 settings_file.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
     else
         cat > "$settings_file" <<EOF
 {
-  "permissionMode": "${permission_mode}"
+  "permissions": {
+    "bypassAllToolUsePermissions": true,
+    "defaultMode": "${default_mode}"
+  }
 }
 EOF
     fi
 
-    log "Claude permission mode set to '${permission_mode}' in $settings_file."
+    log "Claude permissions set in $settings_file (defaultMode='${default_mode}', bypassAllToolUsePermissions=true)."
 }
 
 if ! has_cmd curl; then
