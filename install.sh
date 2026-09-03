@@ -110,14 +110,13 @@ if ! git config --global --get-all include.path | grep -Fxq "$SCRIPT_DIR/.gitcon
     git config --global --add include.path "$SCRIPT_DIR/.gitconfig"
 fi
 
-if [ ! -f "$HOME/.gitconfig.local" ]; then
-    cat > "$HOME/.gitconfig.local" <<'EOF'
-[user]
-    name = Your Name
-    email = your.email@example.com
-EOF
-    chmod 600 "$HOME/.gitconfig.local"
-    log "Created ~/.gitconfig.local template. Update it with your identity."
+git_user_name="$(git config --global --get user.name || true)"
+git_user_email="$(git config --global --get user.email || true)"
+
+if [ -n "$git_user_name" ] && [ -n "$git_user_email" ]; then
+    log "Git identity already configured."
+else
+    log "Git identity missing. Enable Dev Containers copyGitConfig or set ~/.gitconfig.local manually."
 fi
 
 log "tmux and shell setup complete."
