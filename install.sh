@@ -13,6 +13,23 @@ has_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
+is_container_runtime() {
+    [ -f "/.dockerenv" ] && return 0
+    [ -f "/run/.containerenv" ] && return 0
+    [ -n "${REMOTE_CONTAINERS:-}" ] && return 0
+    [ -n "${DEVCONTAINER:-}" ] && return 0
+
+    if [ -r "/proc/1/cgroup" ] && grep -Eiq '(docker|containerd|kubepods|podman|lxc)' /proc/1/cgroup; then
+        return 0
+    fi
+
+    if [ -r "/proc/1/environ" ] && tr '\0' '\n' < /proc/1/environ | grep -Eiq '^(container|CONTAINER|DEVCONTAINER|REMOTE_CONTAINERS)='; then
+        return 0
+    fi
+
+    return 1
+}
+
 ensure_local_bin() {
     mkdir -p "$HOME/.local/bin"
     export PATH="$HOME/.local/bin:$PATH"
@@ -35,6 +52,116 @@ apt_install() {
     else
         apt-get update -qq && apt-get install -y "$package"
     fi
+}
+
+sync_claude_settings() {
+    local sync_toggle="${CLAUDE_SYNC:-1}"
+    case "${sync_toggle,,}" in
+        0|false|no|off)
+            log "Skipping Claude settings sync (CLAUDE_SYNC=$sync_toggle)."
+            return 0
+            ;;
+    esac
+
+    local repo="https://github.com/JavierMNieto/.claude.git"
+    local ref="${CLAUDE_SYNC_REF:-}"
+    local dest="$HOME/.claude"
+    local cache_dir="$HOME/.cache/dotfiles/claude-settings"
+
+    mkdir -p "$(dirname "$cache_dir")" "$dest"
+
+    if [ -d "$cache_dir/.git" ]; then
+        git -C "$cache_dir" remote set-url origin "$repo" >/dev/null 2>&1 || true
+        git -C "$cache_dir" fetch --prune origin >/dev/null
+    else
+        log "Cloning Claude settings from $repo..."
+        git clone --depth 1 "$repo" "$cache_dir" >/dev/null
+    fi
+
+    if [ -n "$ref" ]; then
+        git -C "$cache_dir" fetch --depth 1 origin "$ref" >/dev/null
+        git -C "$cache_dir" checkout -f --detach FETCH_HEAD >/dev/null
+    else
+        git -C "$cache_dir" checkout -f --detach refs/remotes/origin/HEAD >/dev/null 2>&1 || \
+            git -C "$cache_dir" checkout -f --detach "$(git -C "$cache_dir" rev-parse HEAD)" >/dev/null
+    fi
+
+    if has_cmd rsync; then
+        rsync -a --exclude=.git/ "$cache_dir"/ "$dest"/
+    else
+        log "rsync not available; using cp fallback."
+        find "$cache_dir" -mindepth 1 -maxdepth 1 ! -name ".git" -exec cp -R {} "$dest"/ \;
+    fi
+
+    log "Claude settings synced to $dest."
+}
+
+apply_claude_permission_mode() {
+    local detection_mode="${CLAUDE_CONTAINER_DETECTION:-auto}"
+    local permission_mode="${CLAUDE_CONTAINER_PERMISSION_MODE:-bypassPermissions}"
+    local settings_file="$HOME/.claude/settings.local.json"
+    local in_container=1
+
+    case "${detection_mode,,}" in
+        1|true|yes|on|always)
+            in_container=0
+            ;;
+        0|false|no|off|never)
+            in_container=1
+            ;;
+        auto|'')
+            if is_container_runtime; then
+                in_container=0
+            fi
+            ;;
+        *)
+            log "Unknown CLAUDE_CONTAINER_DETECTION value '$detection_mode'; expected auto/on/off."
+            return 0
+            ;;
+    esac
+
+    if [ "$in_container" -ne 0 ]; then
+        log "Skipping Claude permission-mode override (container not detected)."
+        return 0
+    fi
+
+    if [ -z "$permission_mode" ]; then
+        log "Skipping Claude permission-mode override (CLAUDE_CONTAINER_PERMISSION_MODE is empty)."
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$settings_file")"
+
+    if has_cmd python3; then
+        python3 - "$settings_file" "$permission_mode" <<'PY'
+import json
+import pathlib
+import sys
+
+settings_file = pathlib.Path(sys.argv[1])
+permission_mode = sys.argv[2]
+payload = {}
+
+if settings_file.exists():
+    try:
+        parsed = json.loads(settings_file.read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            payload = parsed
+    except Exception:
+        pass
+
+payload["permissionMode"] = permission_mode
+settings_file.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+    else
+        cat > "$settings_file" <<EOF
+{
+  "permissionMode": "${permission_mode}"
+}
+EOF
+    fi
+
+    log "Claude permission mode set to '${permission_mode}' in $settings_file."
 }
 
 if ! has_cmd curl; then
@@ -68,6 +195,13 @@ fi
 
 # ── Install tmux if not present ───────────────────────────────────────────────
 apt_install tmux
+
+# ── Optional clipboard helpers for tmux select-to-copy on Linux ──────────────
+# No-op on non-apt systems (e.g., macOS).
+apt_install wl-clipboard
+apt_install xclip
+apt_install xsel
+apt_install rsync
 
 # ── Install gitmux if not present ───────────────────────────────────────────────
 if ! has_cmd gitmux; then
@@ -118,5 +252,9 @@ if [ -n "$git_user_name" ] && [ -n "$git_user_email" ]; then
 else
     log "Git identity missing. Enable Dev Containers copyGitConfig or set ~/.gitconfig.local manually."
 fi
+
+# ── Claude settings sync ───────────────────────────────────────────────────────
+sync_claude_settings
+apply_claude_permission_mode
 
 log "tmux and shell setup complete."
