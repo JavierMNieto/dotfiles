@@ -253,29 +253,13 @@ if ! git config --global --get-all include.path | grep -Fxq "$SCRIPT_DIR/.gitcon
     git config --global --add include.path "$SCRIPT_DIR/.gitconfig"
 fi
 
-default_git_name="${GIT_USER_NAME:-${GIT_AUTHOR_NAME:-${GITHUB_ACTOR:-${USER:-Your Name}}}}"
-default_git_email="${GIT_USER_EMAIL:-${GIT_AUTHOR_EMAIL:-}}"
-if [ -z "$default_git_email" ] && [ -n "${GITHUB_ACTOR:-}" ]; then
-    default_git_email="${GITHUB_ACTOR}@users.noreply.github.com"
-fi
-default_git_email="${default_git_email:-your.email@example.com}"
+git_user_name="$(git config --global --get user.name || true)"
+git_user_email="$(git config --global --get user.email || true)"
 
-if [ ! -f "$HOME/.gitconfig.local" ]; then
-    cat > "$HOME/.gitconfig.local" <<EOF
-[user]
-    name = ${default_git_name}
-    email = ${default_git_email}
-EOF
-    chmod 600 "$HOME/.gitconfig.local"
-    log "Created ~/.gitconfig.local with detected identity defaults."
-elif grep -Fq "name = Your Name" "$HOME/.gitconfig.local" || grep -Fq "email = your.email@example.com" "$HOME/.gitconfig.local"; then
-    if grep -Fq "name = Your Name" "$HOME/.gitconfig.local"; then
-        git config --file "$HOME/.gitconfig.local" user.name "$default_git_name"
-    fi
-    if grep -Fq "email = your.email@example.com" "$HOME/.gitconfig.local"; then
-        git config --file "$HOME/.gitconfig.local" user.email "$default_git_email"
-    fi
-    log "Updated ~/.gitconfig.local placeholder identity values."
+if [ -n "$git_user_name" ] && [ -n "$git_user_email" ]; then
+    log "Git identity already configured."
+else
+    log "Git identity missing. Enable Dev Containers copyGitConfig or set ~/.gitconfig.local manually."
 fi
 
 # ── Claude settings sync ───────────────────────────────────────────────────────

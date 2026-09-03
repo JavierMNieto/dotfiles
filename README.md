@@ -31,8 +31,16 @@ This repo now ships a tracked `/home/runner/work/dotfiles/dotfiles/.gitconfig` w
 Identity/secrets stay in untracked `~/.gitconfig.local`:
 
 - `install.sh` adds the repo `.gitconfig` as a global include.
-- If `~/.gitconfig.local` does not exist, it is created with detected defaults from `GIT_USER_NAME` / `GIT_AUTHOR_NAME` / `GITHUB_ACTOR` and matching email fallbacks.
-- If `~/.gitconfig.local` still has placeholder values (`Your Name`, `your.email@example.com`), `install.sh` updates them automatically with detected defaults.
+- `install.sh` does **not** write/reset your identity values.
+- If identity is missing, configure it via host Git config copy (`copyGitConfig`) or create `~/.gitconfig.local` manually.
+
+For local Dev Containers, prefer enabling Git config copy so identity is automatic:
+
+```json
+"dev.containers.copyGitConfig": true
+```
+
+Limitation: host Git config copy applies to local Dev Containers; remote environments like Codespaces cannot read your host `~/.gitconfig`.
 
 ## Claude sync
 
