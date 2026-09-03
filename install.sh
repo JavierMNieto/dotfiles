@@ -13,6 +13,23 @@ has_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
+is_container_runtime() {
+    [ -f "/.dockerenv" ] && return 0
+    [ -f "/run/.containerenv" ] && return 0
+    [ -n "${REMOTE_CONTAINERS:-}" ] && return 0
+    [ -n "${DEVCONTAINER:-}" ] && return 0
+
+    if [ -r "/proc/1/cgroup" ] && grep -Eiq '(docker|containerd|kubepods|podman|lxc)' /proc/1/cgroup; then
+        return 0
+    fi
+
+    if [ -r "/proc/1/environ" ] && tr '\0' '\n' < /proc/1/environ | grep -Eiq '^(container|CONTAINER|DEVCONTAINER|REMOTE_CONTAINERS)='; then
+        return 0
+    fi
+
+    return 1
+}
+
 ensure_local_bin() {
     mkdir -p "$HOME/.local/bin"
     export PATH="$HOME/.local/bin:$PATH"
@@ -77,6 +94,74 @@ sync_claude_settings() {
     fi
 
     log "Claude settings synced to $dest."
+}
+
+apply_claude_permission_mode() {
+    local detection_mode="${CLAUDE_CONTAINER_DETECTION:-auto}"
+    local permission_mode="${CLAUDE_CONTAINER_PERMISSION_MODE:-bypassPermissions}"
+    local settings_file="$HOME/.claude/settings.local.json"
+    local in_container=1
+
+    case "${detection_mode,,}" in
+        1|true|yes|on|always)
+            in_container=0
+            ;;
+        0|false|no|off|never)
+            in_container=1
+            ;;
+        auto|'')
+            if is_container_runtime; then
+                in_container=0
+            fi
+            ;;
+        *)
+            log "Unknown CLAUDE_CONTAINER_DETECTION value '$detection_mode'; expected auto/on/off."
+            return 0
+            ;;
+    esac
+
+    if [ "$in_container" -ne 0 ]; then
+        log "Skipping Claude permission-mode override (container not detected)."
+        return 0
+    fi
+
+    if [ -z "$permission_mode" ]; then
+        log "Skipping Claude permission-mode override (CLAUDE_CONTAINER_PERMISSION_MODE is empty)."
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$settings_file")"
+
+    if has_cmd python3; then
+        python3 - "$settings_file" "$permission_mode" <<'PY'
+import json
+import pathlib
+import sys
+
+settings_file = pathlib.Path(sys.argv[1])
+permission_mode = sys.argv[2]
+payload = {}
+
+if settings_file.exists():
+    try:
+        parsed = json.loads(settings_file.read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            payload = parsed
+    except Exception:
+        pass
+
+payload["permissionMode"] = permission_mode
+settings_file.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+    else
+        cat > "$settings_file" <<EOF
+{
+  "permissionMode": "${permission_mode}"
+}
+EOF
+    fi
+
+    log "Claude permission mode set to '${permission_mode}' in $settings_file."
 }
 
 if ! has_cmd curl; then
@@ -186,5 +271,6 @@ fi
 
 # ── Claude settings sync ───────────────────────────────────────────────────────
 sync_claude_settings
+apply_claude_permission_mode
 
 log "tmux and shell setup complete."
