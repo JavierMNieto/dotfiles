@@ -41,7 +41,7 @@ Identity/secrets stay in untracked `~/.gitconfig.local`:
 - `CLAUDE_SYNC` — toggle sync on/off (`1` by default; accepts `0`, `false`, `no`, `off` to disable)
 - `CLAUDE_SYNC_REF` — optional branch/tag/commit to sync (default: repo default branch)
 - `CLAUDE_CONTAINER_DETECTION` — container detection mode for permission override (`auto` by default; accepts `on`/`off`)
-- `CLAUDE_CONTAINER_PERMISSION_MODE` — Claude `permissionMode` to apply in containers (`bypassPermissions` by default; set empty to disable override)
+- `CLAUDE_CONTAINER_PERMISSION_MODE` — Claude `permissions.defaultMode` to apply in containers (`bypassPermissions` by default; set empty to disable override)
 
 Notes:
 - Source is fixed to `https://github.com/JavierMNieto/.claude.git`.
@@ -49,7 +49,7 @@ Notes:
 - `.git/` from the settings repo is never copied.
 - Local files in `~/.claude` are preserved by default (sync updates/overwrites matching files only).
 - On systems without `rsync`, a `cp` fallback is used.
-- When container detection matches, `install.sh` writes `permissionMode` into `~/.claude/settings.local.json`.
+- When container detection matches, `install.sh` writes `permissions.defaultMode` and `permissions.bypassAllToolUsePermissions=true` into `~/.claude/settings.local.json`.
 - Container detection checks: `/.dockerenv`, `/run/.containerenv`, `REMOTE_CONTAINERS`, `DEVCONTAINER`, and `/proc/1/{cgroup,environ}` runtime markers.
 
 ## Usage
