@@ -18,12 +18,13 @@ is_container_runtime() {
     [ -f "/run/.containerenv" ] && return 0
     [ -n "${REMOTE_CONTAINERS:-}" ] && return 0
     [ -n "${DEVCONTAINER:-}" ] && return 0
+    [ -n "${CODESPACES:-}" ] && return 0
 
     if [ -r "/proc/1/cgroup" ] && grep -Eiq '(docker|containerd|kubepods|podman|lxc)' /proc/1/cgroup; then
         return 0
     fi
 
-    if [ -r "/proc/1/environ" ] && tr '\0' '\n' < /proc/1/environ | grep -Eiq '^(container|CONTAINER|DEVCONTAINER|REMOTE_CONTAINERS)='; then
+    if [ -r "/proc/1/environ" ] && tr '\0' '\n' < /proc/1/environ 2>/dev/null | grep -Eiq '^(container|CONTAINER|DEVCONTAINER|REMOTE_CONTAINERS)='; then
         return 0
     fi
 
@@ -99,7 +100,7 @@ sync_claude_settings() {
 apply_claude_permission_mode() {
     local detection_mode="${CLAUDE_CONTAINER_DETECTION:-auto}"
     local default_mode="${CLAUDE_CONTAINER_PERMISSION_MODE:-bypassPermissions}"
-    local settings_file="$HOME/.claude/settings.local.json"
+    local settings_file="$HOME/.claude/settings.json"
     local in_container=1
 
     case "${detection_mode,,}" in
@@ -132,45 +133,79 @@ apply_claude_permission_mode() {
 
     mkdir -p "$(dirname "$settings_file")"
 
+    local skip_prompt=0
+    if [ "$default_mode" = "bypassPermissions" ]; then
+        skip_prompt=1
+    fi
+
     if has_cmd python3; then
-        python3 - "$settings_file" "$default_mode" <<'PY'
+        if ! python3 - "$settings_file" "$default_mode" "$skip_prompt" <<'PY'
 import json
+import os
 import pathlib
 import sys
 
 settings_file = pathlib.Path(sys.argv[1])
 default_mode = sys.argv[2]
+skip_prompt = sys.argv[3] == "1"
 payload = {}
 
 if settings_file.exists():
     try:
-        parsed = json.loads(settings_file.read_text(encoding="utf-8"))
-        if isinstance(parsed, dict):
-            payload = parsed
-    except Exception:
-        pass
+        payload = json.loads(settings_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        sys.exit(f"cannot parse {settings_file}: {exc}")
+    if not isinstance(payload, dict):
+        sys.exit(f"{settings_file} is not a JSON object")
 
 permissions = payload.get("permissions")
 if not isinstance(permissions, dict):
     permissions = {}
 
+permissions.pop("bypassAllToolUsePermissions", None)
 permissions["defaultMode"] = default_mode
-permissions["bypassAllToolUsePermissions"] = True
 payload["permissions"] = permissions
-settings_file.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+if skip_prompt:
+    payload["skipDangerousModePermissionPrompt"] = True
+
+tmp = settings_file.with_name(settings_file.name + ".tmp")
+tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+os.replace(tmp, settings_file)
 PY
+        then
+            log "Skipping Claude permissions override (could not merge into $settings_file)."
+            return 0
+        fi
+    elif has_cmd jq; then
+        local tmp_file="${settings_file}.tmp"
+        local existing='{}'
+        if [ -f "$settings_file" ]; then
+            existing="$(cat "$settings_file")"
+        fi
+        if ! printf '%s' "$existing" | jq \
+            --arg mode "$default_mode" \
+            --argjson skip "$([ "$skip_prompt" -eq 1 ] && echo true || echo false)" '
+            if type != "object" then error("not a JSON object") else . end
+            | .permissions = ((if (.permissions | type) == "object" then .permissions else {} end)
+                | del(.bypassAllToolUsePermissions)
+                | .defaultMode = $mode)
+            | if $skip then .skipDangerousModePermissionPrompt = true else . end
+        ' > "$tmp_file"; then
+            rm -f "$tmp_file"
+            log "Skipping Claude permissions override (could not merge into $settings_file)."
+            return 0
+        fi
+        mv "$tmp_file" "$settings_file"
     else
-        cat > "$settings_file" <<EOF
-{
-  "permissions": {
-    "bypassAllToolUsePermissions": true,
-    "defaultMode": "${default_mode}"
-  }
-}
-EOF
+        log "Skipping Claude permissions override (python3 and jq not available; not touching $settings_file)."
+        return 0
     fi
 
-    log "Claude permissions set in $settings_file (defaultMode='${default_mode}', bypassAllToolUsePermissions=true)."
+    if [ "$skip_prompt" -eq 1 ]; then
+        log "Claude permissions set in $settings_file (defaultMode='${default_mode}', skipDangerousModePermissionPrompt=true)."
+    else
+        log "Claude permissions set in $settings_file (defaultMode='${default_mode}')."
+    fi
 }
 
 if ! has_cmd curl; then
