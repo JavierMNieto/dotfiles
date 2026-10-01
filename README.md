@@ -57,8 +57,10 @@ Notes:
 - `.git/` from the settings repo is never copied.
 - Local files in `~/.claude` are preserved by default (sync updates/overwrites matching files only).
 - On systems without `rsync`, a `cp` fallback is used.
-- When container detection matches, `install.sh` writes `permissions.defaultMode` and `permissions.bypassAllToolUsePermissions=true` into `~/.claude/settings.local.json`.
-- Container detection checks: `/.dockerenv`, `/run/.containerenv`, `REMOTE_CONTAINERS`, `DEVCONTAINER`, and `/proc/1/{cgroup,environ}` runtime markers.
+- When container detection matches, `install.sh` merges `permissions.defaultMode` into the user-scope `~/.claude/settings.json` (Claude Code ignores `bypassPermissions` from project/local scope). When the mode is `bypassPermissions`, it also sets top-level `skipDangerousModePermissionPrompt: true`. A stale `permissions.bypassAllToolUsePermissions` key is removed.
+- The override runs after the sync, so synced settings can't overwrite it. Existing keys are preserved; the file is never replaced wholesale.
+- The merge uses `python3`, falling back to `jq`. If neither is available, or the existing file isn't a valid JSON object, the override is logged and skipped.
+- Container detection checks: `/.dockerenv`, `/run/.containerenv`, `REMOTE_CONTAINERS`, `DEVCONTAINER`, `CODESPACES`, and `/proc/1/{cgroup,environ}` runtime markers.
 
 ## Usage
 
