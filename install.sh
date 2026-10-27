@@ -499,6 +499,7 @@ apt_install wl-clipboard
 apt_install xclip
 apt_install xsel
 apt_install rsync
+apt_install gh
 
 # ── Install gitmux if not present ───────────────────────────────────────────────
 if ! has_cmd gitmux; then
@@ -548,6 +549,19 @@ if [ -n "$git_user_name" ] && [ -n "$git_user_email" ]; then
     log "Git identity already configured."
 else
     log "Git identity missing. Enable Dev Containers copyGitConfig or set ~/.gitconfig.local manually."
+fi
+
+# ── GitHub token for git over HTTPS ─────────────────────────────────────────
+# GH_TOKEN makes github.com a known host for gh, so no login is needed; the
+# credential helper serves the token to git as x-access-token.
+if [ -n "${GH_TOKEN:-}" ] && has_cmd gh; then
+    if gh auth setup-git --hostname github.com >/dev/null 2>&1; then
+        log "git over HTTPS to github.com uses GH_TOKEN through gh."
+    else
+        log "gh auth setup-git failed; git over HTTPS is unchanged."
+    fi
+else
+    log "Skipping gh git setup (GH_TOKEN not set or gh not available)."
 fi
 
 # ── Claude settings ────────────────────────────────────────────────────────────

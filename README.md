@@ -10,6 +10,7 @@ Personal dev container setup script.
 - `tmux` (via `apt-get`, if available)
 - Linux clipboard helpers for tmux (`wl-clipboard`, `xclip`, `xsel` via `apt-get`, if available)
 - `gitmux` (latest release, Linux `amd64`/`arm64`)
+- `gh` (via `apt-get`, if available); with `GH_TOKEN` set, `install.sh` runs `gh auth setup-git --hostname github.com`, so git over HTTPS to github.com and `gh` both use that token, with no login
 - `~/.tmux.conf` and `~/.gitmux.conf` copied from this repository
 - TPM plugin manager (`~/.tmux/plugins/tpm`) if missing
 - `claude/settings.json` merged into the user-scope `~/.claude/settings.json`
