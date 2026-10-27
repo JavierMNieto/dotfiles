@@ -6,6 +6,7 @@ Personal dev container setup script.
 
 - `bun` (if missing)
 - `uv` (if missing)
+- Claude Code (`https://claude.ai/install.sh`) and Codex (`https://chatgpt.com/codex/install.sh`), each only if its command is missing; a failed install is logged and setup continues
 - `tmux` (via `apt-get`, if available)
 - Linux clipboard helpers for tmux (`wl-clipboard`, `xclip`, `xsel` via `apt-get`, if available)
 - `gitmux` (latest release, Linux `amd64`/`arm64`)
@@ -83,6 +84,16 @@ Notes:
 - The override runs after the settings merge, so the tracked settings can't overwrite it. Existing keys are preserved; the file is never replaced wholesale.
 - The merge uses `python3`, falling back to `jq`. If neither is available, or the existing file isn't a valid JSON object, the override is logged and skipped.
 - Container detection checks: `/.dockerenv`, `/run/.containerenv`, `REMOTE_CONTAINERS`, `DEVCONTAINER`, `CODESPACES`, and `/proc/1/{cgroup,environ}` runtime markers.
+
+### Codex permission mode in containers
+
+Like Claude's, Codex's own prompts and sandbox are turned off in a container, which is the sandbox. `install.sh` sets the top-level `approval_policy` and `sandbox_mode` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), the config form of `codex --dangerously-bypass-approvals-and-sandbox`:
+
+- `CODEX_CONTAINER_DETECTION` — `auto`/`on`/`off`; defaults to `CLAUDE_CONTAINER_DETECTION`, then `auto`
+- `CODEX_CONTAINER_APPROVAL_POLICY` — `never` by default; set empty to leave it alone
+- `CODEX_CONTAINER_SANDBOX_MODE` — `danger-full-access` by default; set empty to leave it alone
+
+Only those two lines are written: every other line, table and profile in the file is kept, the file is checked to parse before and after, and it is written through a temp file. Without `python3`, or when the file does not parse, the override is logged and skipped.
 
 ## Usage
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Personal dev container setup — runs automatically on container create/attach.
-# Installs tools, the tmux and git configs, and merges claude/settings.json into ~/.claude/settings.json.
+# Installs tools (Claude Code and Codex among them), the tmux and git configs, and merges claude/settings.json into ~/.claude/settings.json.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +29,35 @@ is_container_runtime() {
     fi
 
     return 1
+}
+
+# Whether a container override should run, from a detection mode
+# (auto/on/off); logs why not.
+container_override_wanted() {
+    local detection_mode="$1"
+    local variable="$2"
+    local what="$3"
+
+    case "${detection_mode,,}" in
+        1|true|yes|on|always)
+            return 0
+            ;;
+        0|false|no|off|never)
+            log "Skipping $what ($variable=$detection_mode)."
+            return 1
+            ;;
+        auto|'')
+            if is_container_runtime; then
+                return 0
+            fi
+            log "Skipping $what (container not detected)."
+            return 1
+            ;;
+        *)
+            log "Unknown $variable value '$detection_mode'; expected auto/on/off."
+            return 1
+            ;;
+    esac
 }
 
 ensure_local_bin() {
@@ -268,28 +297,8 @@ apply_claude_permission_mode() {
     local detection_mode="${CLAUDE_CONTAINER_DETECTION:-auto}"
     local default_mode="${CLAUDE_CONTAINER_PERMISSION_MODE:-bypassPermissions}"
     local settings_file="$HOME/.claude/settings.json"
-    local in_container=1
 
-    case "${detection_mode,,}" in
-        1|true|yes|on|always)
-            in_container=0
-            ;;
-        0|false|no|off|never)
-            in_container=1
-            ;;
-        auto|'')
-            if is_container_runtime; then
-                in_container=0
-            fi
-            ;;
-        *)
-            log "Unknown CLAUDE_CONTAINER_DETECTION value '$detection_mode'; expected auto/on/off."
-            return 0
-            ;;
-    esac
-
-    if [ "$in_container" -ne 0 ]; then
-        log "Skipping Claude permissions override (container not detected)."
+    if ! container_override_wanted "$detection_mode" CLAUDE_CONTAINER_DETECTION "Claude permissions override"; then
         return 0
     fi
 
@@ -375,6 +384,84 @@ PY
     fi
 }
 
+apply_codex_permission_mode() {
+    local detection_mode="${CODEX_CONTAINER_DETECTION:-${CLAUDE_CONTAINER_DETECTION:-auto}}"
+    local approval_policy="${CODEX_CONTAINER_APPROVAL_POLICY-never}"
+    local sandbox_mode="${CODEX_CONTAINER_SANDBOX_MODE-danger-full-access}"
+    local config_file="${CODEX_HOME:-$HOME/.codex}/config.toml"
+
+    if ! container_override_wanted "$detection_mode" CODEX_CONTAINER_DETECTION "Codex permissions override"; then
+        return 0
+    fi
+
+    if [ -z "$approval_policy" ] && [ -z "$sandbox_mode" ]; then
+        log "Skipping Codex permissions override (CODEX_CONTAINER_APPROVAL_POLICY and CODEX_CONTAINER_SANDBOX_MODE are empty)."
+        return 0
+    fi
+
+    if ! has_cmd python3; then
+        log "Skipping Codex permissions override (python3 not available; not touching $config_file)."
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$config_file")"
+
+    if ! python3 -I - "$config_file" "$approval_policy" "$sandbox_mode" <<'PY'
+import json
+import os
+import pathlib
+import re
+import sys
+
+config_file = pathlib.Path(sys.argv[1])
+wanted = {"approval_policy": sys.argv[2], "sandbox_mode": sys.argv[3]}
+wanted = {key: value for key, value in wanted.items() if value}
+
+text = config_file.read_text(encoding="utf-8") if config_file.exists() else ""
+lines = text.splitlines()
+
+try:
+    import tomllib
+except ImportError:
+    tomllib = None
+if tomllib is not None and text:
+    try:
+        tomllib.loads(text)
+    except Exception as exc:
+        sys.exit(f"cannot parse {config_file}: {exc}")
+
+# Top-level keys sit before the first table header; set them there and
+# leave every other line as it is.
+first_table = next(
+    (i for i, line in enumerate(lines) if re.match(r"\s*\[", line)), len(lines)
+)
+done = set()
+for i in range(first_table):
+    match = re.match(r"\s*([A-Za-z0-9_-]+)\s*=", lines[i])
+    if match and match.group(1) in wanted:
+        key = match.group(1)
+        lines[i] = f"{key} = {json.dumps(wanted[key])}"
+        done.add(key)
+missing = [f"{key} = {json.dumps(value)}" for key, value in wanted.items() if key not in done]
+lines[0:0] = missing
+
+result = "\n".join(lines) + "\n"
+if tomllib is not None:
+    parsed = tomllib.loads(result)
+    assert all(parsed.get(key) == value for key, value in wanted.items())
+
+tmp = config_file.with_name(config_file.name + ".tmp")
+tmp.write_text(result, encoding="utf-8")
+os.replace(tmp, config_file)
+PY
+    then
+        log "Skipping Codex permissions override (could not merge into $config_file)."
+        return 0
+    fi
+
+    log "Codex permissions set in $config_file (approval_policy='${approval_policy}', sandbox_mode='${sandbox_mode}')."
+}
+
 if ! has_cmd curl; then
     log "curl is required but was not found."
     exit 1
@@ -392,6 +479,16 @@ if ! has_cmd uv; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 ensure_local_bin
+
+# ── Install Claude Code and Codex if not present ─────────────────────────────
+if ! has_cmd claude; then
+    log "Installing Claude Code..."
+    curl -fsSL https://claude.ai/install.sh | bash || log "Claude Code install failed; continuing."
+fi
+if ! has_cmd codex; then
+    log "Installing Codex..."
+    curl -fsSL https://chatgpt.com/codex/install.sh | sh || log "Codex install failed; continuing."
+fi
 
 # ── Install tmux if not present ───────────────────────────────────────────────
 apt_install tmux
@@ -457,5 +554,6 @@ fi
 tidy_claude_sync
 merge_claude_settings
 apply_claude_permission_mode
+apply_codex_permission_mode
 
 log "tmux and shell setup complete."
