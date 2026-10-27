@@ -55,29 +55,130 @@ apt_install() {
     fi
 }
 
-tidy_claude_sync() {
-    local dest="$HOME/.claude"
-    local readme="$dest/README.md"
+clean_old_claude_settings() {
+    local settings_file="$1"
+    local aside="$2"
 
-    if [ ! -f "$readme" ] || ! grep -Fxq '# Claude Code Agent Configuration' "$readme"; then
+    if ! has_cmd python3; then
+        log "Skipping the old settings cleanup (python3 not available; not touching $settings_file)."
         return 0
     fi
 
+    local backup="$aside/settings.json"
+    if [ -e "$backup" ]; then
+        backup="$aside/settings.$(date +%H%M%S).json"
+    fi
+    cp "$settings_file" "$backup"
+
+    local removed
+    if ! removed="$(python3 -I - "$settings_file" <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+settings_file = pathlib.Path(sys.argv[1])
+try:
+    payload = json.loads(settings_file.read_text(encoding="utf-8"))
+except Exception as exc:
+    sys.exit(f"cannot parse {settings_file}: {exc}")
+if not isinstance(payload, dict):
+    sys.exit(f"{settings_file} is not a JSON object")
+
+OLD_HOOKS = ("hooks/launcher.js", "jcodemunch-mcp hook-", "jdocmunch-mcp hook-")
+removed = []
+
+hooks = payload.get("hooks")
+if isinstance(hooks, dict):
+    for event in list(hooks):
+        groups = hooks[event]
+        if not isinstance(groups, list):
+            continue
+        kept_groups = []
+        for group in groups:
+            entries = group.get("hooks") if isinstance(group, dict) else None
+            if not isinstance(entries, list):
+                kept_groups.append(group)
+                continue
+            kept = []
+            for entry in entries:
+                command = entry.get("command", "") if isinstance(entry, dict) else ""
+                if isinstance(command, str) and any(old in command for old in OLD_HOOKS):
+                    removed.append(f"hooks.{event}: {command}")
+                else:
+                    kept.append(entry)
+            if kept:
+                group["hooks"] = kept
+                kept_groups.append(group)
+        if kept_groups:
+            hooks[event] = kept_groups
+        else:
+            del hooks[event]
+    if not hooks:
+        del payload["hooks"]
+
+env = payload.get("env")
+if isinstance(env, dict):
+    for key in ("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "CLAUDE_CODE_SPAWN_BACKEND"):
+        if key in env:
+            del env[key]
+            removed.append(f"env.{key}")
+
+for key in ("teammateMode", "enabledMcpjsonServers"):
+    if key in payload:
+        del payload[key]
+        removed.append(key)
+
+tmp = settings_file.with_name(settings_file.name + ".tmp")
+tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+os.replace(tmp, settings_file)
+print("\n".join(removed))
+PY
+    )"; then
+        log "Skipping the old settings cleanup (could not read $settings_file)."
+        return 0
+    fi
+
+    if [ -n "$removed" ]; then
+        log "Copied $settings_file to $backup and removed what the old .claude repository set:"
+        local line
+        while IFS= read -r line; do
+            log "  $line"
+        done <<< "$removed"
+    else
+        log "Copied $settings_file to $backup; nothing from the old .claude repository was left in it."
+    fi
+}
+
+tidy_claude_sync() {
+    local dest="$HOME/.claude"
+    local readme="$dest/README.md"
+    local settings_file="$dest/settings.json"
     local stamp
     stamp="$(date +%Y-%m-%d)"
     local aside="$dest/synced-removed-$stamp"
-    mkdir -p "$aside"
+    local moved=1
 
-    local item
-    for item in agents hooks scripts skills/create-hook skills/install-hook style \
-        .claude .devcontainer README.md .gitignore CLAUDE.md output-styles; do
-        if [ -e "$dest/$item" ] || [ -L "$dest/$item" ]; then
-            mkdir -p "$aside/$(dirname "$item")"
-            mv "$dest/$item" "$aside/$item"
-        fi
-    done
+    if [ -f "$readme" ] && grep -Fxq '# Claude Code Agent Configuration' "$readme"; then
+        mkdir -p "$aside"
+        local item
+        for item in agents hooks scripts skills/create-hook skills/install-hook style \
+            .claude .devcontainer README.md .gitignore CLAUDE.md output-styles; do
+            if [ -e "$dest/$item" ] || [ -L "$dest/$item" ]; then
+                mkdir -p "$aside/$(dirname "$item")"
+                mv "$dest/$item" "$aside/$item"
+            fi
+        done
+        moved=0
+        log "Moved the old synced files to ~/.claude/synced-removed-$stamp; delete it when you are sure."
+    fi
 
-    log "Moved the old synced files to ~/.claude/synced-removed-$stamp; delete it when you are sure."
+    # The settings the old repository merged in stay after its files move;
+    # a machine already past the move is caught by its launcher.js hook.
+    if [ -f "$settings_file" ] && { [ "$moved" -eq 0 ] || grep -Fq 'hooks/launcher.js' "$settings_file"; }; then
+        mkdir -p "$aside"
+        clean_old_claude_settings "$settings_file" "$aside"
+    fi
 }
 
 merge_claude_settings() {
