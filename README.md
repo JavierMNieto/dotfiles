@@ -6,7 +6,6 @@ Personal dev container setup script.
 
 - `bun` (if missing)
 - `uv` (if missing)
-- `jcodemunch-mcp` and `jdocmunch-mcp` (via `uv tool install --upgrade`)
 - `tmux` (via `apt-get`, if available)
 - Linux clipboard helpers for tmux (`wl-clipboard`, `xclip`, `xsel` via `apt-get`, if available)
 - `gitmux` (latest release, Linux `amd64`/`arm64`)
@@ -60,7 +59,6 @@ What the tracked file holds, and why:
 
 Left out on purpose:
 
-- The jcodemunch and jdocmunch hooks and `enabledMcpjsonServers`: a project that wants them names them under **Reading** in its `.claude/workflow.md` and puts the hooks in its own `.claude/settings.json`. This script still installs both tools.
 - `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, `CLAUDE_CODE_SPAWN_BACKEND`, `teammateMode`: the workflow's agents never use teams.
 - `CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX`: the workflow names sessions per project.
 - Permissions for retired connectors and plugins not kept.
@@ -68,6 +66,8 @@ Left out on purpose:
 - `writing@workflow`: the research-writing skills are turned on per project, with `"enabledPlugins": { "writing@workflow": true }` in that project's `.claude/settings.json`.
 
 The agents come from the workflow plugin, not from files in `~/.claude`.
+
+`jcodemunch-mcp` and `jdocmunch-mcp` are no longer installed: measured on two repositories, they saved nothing and cost more tokens on the larger one, so Claude Code's built-in tools read code and docs. Machines that have them keep them.
 
 ### The one-time tidy
 

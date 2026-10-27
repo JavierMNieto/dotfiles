@@ -393,17 +393,6 @@ if ! has_cmd uv; then
 fi
 ensure_local_bin
 
-# ── Install jcodemunch-mcp and jdocmunch-mcp ─────────────────────────────────
-if has_cmd uv; then
-    log "Installing jcodemunch-mcp..."
-    uv tool install jcodemunch-mcp --upgrade
-    log "Installing jdocmunch-mcp..."
-    uv tool install jdocmunch-mcp --upgrade
-    log "Done. jcodemunch-mcp and jdocmunch-mcp are installed."
-else
-    log "Skipping MCP tool installation (uv not available)."
-fi
-
 # ── Install tmux if not present ───────────────────────────────────────────────
 apt_install tmux
 
