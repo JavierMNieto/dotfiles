@@ -52,7 +52,7 @@ What the tracked file holds, and why:
 - `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`: compact at 75 percent of the context.
 - `env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`: the workflow's agents spawn subagents one level deep.
 - `permissions.allow`: the read-only commands every project uses (Claude Code's docs, `git log`, `gh api`, GitHub pages).
-- `extraKnownMarketplaces`, `enabledPlugins`: the `workflow` marketplace at `main`, auto-updated, and the Codex plugin; `workflow@workflow` and `codex@openai-codex` are on everywhere.
+- `extraKnownMarketplaces`, `enabledPlugins`: the `workflow` marketplace at `main`, auto-updated, and the Codex plugin; `workflow@workflow` and `codex@openai-codex` are on everywhere. `code-simplifier`, `context7`, `claude-md-management` and `claude-mem`, which the old `.claude` repository turned on, are set to `false`, not left out: the merge keeps keys it does not name, so on a `~/.claude` that survives a rebuild an old `true` would stay; a project that wants one turns it on in its own `.claude/settings.json`.
 - `pluginConfigs`: the workflow plugin's `owner`.
 - `statusLine`: the workflow plugin's status line.
 - `worktree`: background sessions without isolation; new worktrees from the remote's default branch.
