@@ -1,0 +1,39 @@
+{
+  "model": "claude-opus-5-5",
+  "effortLevel": "high",
+  "modelSettings": {
+    "claude-fable-5-1": { "effortLevel": "high" },
+    "claude-opus-5-5": { "effortLevel": "medium" }
+  },
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "75",
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://code.claude.com/docs/**\")",
+      "Bash(git log *)",
+      "Bash(gh api *)",
+      "WebFetch(domain:github.com)"
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "workflow": {
+      "source": { "source": "github", "repo": "JavierMNieto/workflow-plugin", "ref": "main" },
+      "autoUpdate": true
+    },
+    "openai-codex": {
+      "source": { "source": "github", "repo": "openai/codex-plugin-cc" }
+    }
+  },
+  "enabledPlugins": { "workflow@workflow": true, "codex@openai-codex": true },
+  "pluginConfigs": { "workflow@workflow": { "options": { "owner": "Javi" } } },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"$HOME/.claude/plugins/data/workflow-workflow/statusline.mjs\""
+  },
+  "worktree": { "bgIsolation": "none", "baseRef": "fresh" },
+  "tui": "fullscreen",
+  "theme": "dark",
+  "agentPushNotifEnabled": true
+}

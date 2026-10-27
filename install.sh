@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Personal dev container setup — runs automatically on container create/attach.
-# Installs jcodemunch-mcp and jdocmunch-mcp (Python CLI tools used by Claude Code hooks).
+# Installs tools, the tmux and git configs, and merges claude/settings.json into ~/.claude/settings.json.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,46 +55,112 @@ apt_install() {
     fi
 }
 
-sync_claude_settings() {
-    local sync_toggle="${CLAUDE_SYNC:-1}"
-    case "${sync_toggle,,}" in
-        0|false|no|off)
-            log "Skipping Claude settings sync (CLAUDE_SYNC=$sync_toggle)."
-            return 0
-            ;;
-    esac
-
-    local repo="https://github.com/JavierMNieto/.claude.git"
-    local ref="${CLAUDE_SYNC_REF:-}"
+tidy_claude_sync() {
     local dest="$HOME/.claude"
-    local cache_dir="$HOME/.cache/dotfiles/claude-settings"
+    local readme="$dest/README.md"
 
-    mkdir -p "$(dirname "$cache_dir")" "$dest"
-
-    if [ -d "$cache_dir/.git" ]; then
-        git -C "$cache_dir" remote set-url origin "$repo" >/dev/null 2>&1 || true
-        git -C "$cache_dir" fetch --prune origin >/dev/null
-    else
-        log "Cloning Claude settings from $repo..."
-        git clone --depth 1 "$repo" "$cache_dir" >/dev/null
+    if [ ! -f "$readme" ] || ! grep -Fxq '# Claude Code Agent Configuration' "$readme"; then
+        return 0
     fi
 
-    if [ -n "$ref" ]; then
-        git -C "$cache_dir" fetch --depth 1 origin "$ref" >/dev/null
-        git -C "$cache_dir" checkout -f --detach FETCH_HEAD >/dev/null
-    else
-        git -C "$cache_dir" checkout -f --detach refs/remotes/origin/HEAD >/dev/null 2>&1 || \
-            git -C "$cache_dir" checkout -f --detach "$(git -C "$cache_dir" rev-parse HEAD)" >/dev/null
+    local stamp
+    stamp="$(date +%Y-%m-%d)"
+    local aside="$dest/synced-removed-$stamp"
+    mkdir -p "$aside"
+
+    local item
+    for item in agents hooks scripts skills/create-hook skills/install-hook style \
+        .claude .devcontainer README.md .gitignore CLAUDE.md output-styles; do
+        if [ -e "$dest/$item" ] || [ -L "$dest/$item" ]; then
+            mkdir -p "$aside/$(dirname "$item")"
+            mv "$dest/$item" "$aside/$item"
+        fi
+    done
+
+    log "Moved the old synced files to ~/.claude/synced-removed-$stamp; delete it when you are sure."
+}
+
+merge_claude_settings() {
+    local source_file="$SCRIPT_DIR/claude/settings.json"
+    local settings_file="$HOME/.claude/settings.json"
+
+    if [ ! -f "$source_file" ]; then
+        log "Skipping Claude settings merge ($source_file not found)."
+        return 0
     fi
 
-    if has_cmd rsync; then
-        rsync -a --exclude=.git/ "$cache_dir"/ "$dest"/
+    mkdir -p "$(dirname "$settings_file")"
+
+    if has_cmd python3; then
+        if ! python3 -I - "$settings_file" "$source_file" <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+settings_file = pathlib.Path(sys.argv[1])
+source_file = pathlib.Path(sys.argv[2])
+
+try:
+    tracked = json.loads(source_file.read_text(encoding="utf-8"))
+except Exception as exc:
+    sys.exit(f"cannot parse {source_file}: {exc}")
+if not isinstance(tracked, dict):
+    sys.exit(f"{source_file} is not a JSON object")
+
+payload = {}
+if settings_file.exists():
+    try:
+        payload = json.loads(settings_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        sys.exit(f"cannot parse {settings_file}: {exc}")
+    if not isinstance(payload, dict):
+        sys.exit(f"{settings_file} is not a JSON object")
+
+# An object is merged one level down; a scalar or a list is set; every
+# other key in the user settings is kept.
+for key, value in tracked.items():
+    current = payload.get(key)
+    if isinstance(value, dict) and isinstance(current, dict):
+        current.update(value)
+    else:
+        payload[key] = value
+
+tmp = settings_file.with_name(settings_file.name + ".tmp")
+tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+os.replace(tmp, settings_file)
+PY
+        then
+            log "Skipping Claude settings merge (could not merge into $settings_file)."
+            return 0
+        fi
+    elif has_cmd jq; then
+        local tmp_file="${settings_file}.tmp"
+        local existing='{}'
+        if [ -f "$settings_file" ]; then
+            existing="$(cat "$settings_file")"
+        fi
+        if ! printf '%s' "$existing" | jq --slurpfile tracked "$source_file" '
+            if type != "object" then error("not a JSON object") else . end
+            | $tracked[0] as $new
+            | if ($new | type) != "object" then error("tracked settings are not a JSON object") else . end
+            | reduce ($new | keys_unsorted[]) as $k (.;
+                if (.[$k] | type) == "object" and ($new[$k] | type) == "object"
+                then .[$k] += $new[$k]
+                else .[$k] = $new[$k]
+                end)
+        ' > "$tmp_file"; then
+            rm -f "$tmp_file"
+            log "Skipping Claude settings merge (could not merge into $settings_file)."
+            return 0
+        fi
+        mv "$tmp_file" "$settings_file"
     else
-        log "rsync not available; using cp fallback."
-        find "$cache_dir" -mindepth 1 -maxdepth 1 ! -name ".git" -exec cp -R {} "$dest"/ \;
+        log "Skipping Claude settings merge (python3 and jq not available; not touching $settings_file)."
+        return 0
     fi
 
-    log "Claude settings synced to $dest."
+    log "Claude settings from claude/settings.json merged into $settings_file."
 }
 
 apply_claude_permission_mode() {
@@ -297,8 +363,9 @@ else
     log "Git identity missing. Enable Dev Containers copyGitConfig or set ~/.gitconfig.local manually."
 fi
 
-# ── Claude settings sync ───────────────────────────────────────────────────────
-sync_claude_settings
+# ── Claude settings ────────────────────────────────────────────────────────────
+tidy_claude_sync
+merge_claude_settings
 apply_claude_permission_mode
 
 log "tmux and shell setup complete."
