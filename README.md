@@ -14,6 +14,7 @@ Personal dev container setup script.
 - `~/.tmux.conf` and `~/.gitmux.conf` copied from this repository
 - TPM plugin manager (`~/.tmux/plugins/tpm`) if missing
 - `claude/settings.json` merged into the user-scope `~/.claude/settings.json`
+- The homelab session upload hook (https://mcp.javinieto.com/sessions/code/install.sh), when node or bun is available; a session on a new machine says when to run its one-time pair command
 
 ## tmux clipboard behavior
 

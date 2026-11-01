@@ -570,4 +570,19 @@ merge_claude_settings
 apply_claude_permission_mode
 apply_codex_permission_mode
 
+# ── Homelab session upload hook ──────────────────────────────────────────────
+# Sends each Claude Code session to the homelab as it runs and pairs the
+# machine by the lab's sign-in (homelab-mcp, plans/tool-usage-analytics.md).
+# The lab's installer picks node or bun; a lab that does not answer is logged
+# and setup goes on.
+if has_cmd node || has_cmd bun; then
+    if curl -fsSL https://mcp.javinieto.com/sessions/code/install.sh | bash; then
+        log "Homelab session upload hook installed."
+    else
+        log "Homelab session upload hook install failed; continuing."
+    fi
+else
+    log "Skipping the homelab session upload hook (node and bun not available)."
+fi
+
 log "tmux and shell setup complete."
